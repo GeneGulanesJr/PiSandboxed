@@ -1,0 +1,2 @@
+# Host-side QA stack (managed via uv, see docs/browser-harness-notes.md)
+browser-harness==0.1.13
