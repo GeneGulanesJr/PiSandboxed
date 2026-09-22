@@ -61,6 +61,24 @@ describe('SmolvmBackend', () => {
       .rejects.toThrow(/smolvm/);
   });
 
+  it('pack: scheme resolves to the images dir and boots with --from', async () => {
+    const { backend, log } = stubBackend();
+    await backend.boot({ machineName: 'sb_p1', image: 'pack:node26-dev', cpus: 1, memoryMb: 512, net: false, allowHosts: [], sshAgent: false, mounts: [] });
+    const calls = readFileSync(log, 'utf8');
+    expect(calls).toContain('--from');
+    expect(calls).toMatch(/node26-dev\.smolmachine/);
+    expect(calls).not.toMatch(/--image/);
+  });
+
+  it('raw .smolmachine paths also boot with --from; registry refs keep --image', async () => {
+    const { backend, log } = stubBackend();
+    await backend.boot({ machineName: 'sb_p2', image: '/tmp/x.smolmachine', cpus: 1, memoryMb: 512, net: false, allowHosts: [], sshAgent: false, mounts: [] });
+    await backend.boot({ machineName: 'sb_p3', image: 'alpine:3.20', cpus: 1, memoryMb: 512, net: false, allowHosts: [], sshAgent: false, mounts: [] });
+    const calls = readFileSync(log, 'utf8');
+    expect(calls).toContain('--from /tmp/x.smolmachine');
+    expect(calls).toContain('--image alpine:3.20');
+  });
+
   it('mounts pass through with :ro suffix for read-only', async () => {
     const { backend, log } = stubBackend();
     await backend.boot({ machineName: 'sb_m', image: 'alpine', cpus: 1, memoryMb: 512, net: false, allowHosts: [], sshAgent: false,

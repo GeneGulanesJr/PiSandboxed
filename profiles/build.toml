@@ -1,4 +1,4 @@
-image = "node26-dev"
+image = "pack:node26-dev"
 cpus = 4
 memory = 8192
 ttl = "1h"

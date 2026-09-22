@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import type { BackendHandle, BootOptions, ExecInput, ExecOutput, IsolationBackend } from '../../core/ports.js';
 
 export class BackendError extends Error {}
@@ -18,13 +20,26 @@ export class SmolvmBackend implements IsolationBackend {
   }
 
   async boot(opts: BootOptions): Promise<BackendHandle> {
+    // IMAGE SOURCING (smolvm 1.17.0, verified): baked packs load via `--from <path>`
+    // (`pack:NAME` resolves to $SMOLVM_IMAGES_DIR/NAME.smolmachine, default
+    // ~/.pisandboxed/images). `--image`/-I is ONLY for registry refs, docker-save
+    // tars, and rootfs dirs — a .smolmachine path under --image is not the blessed form.
+    const packMatch = /^pack:(.+)$/.exec(opts.image);
+    const rawPath = opts.image.endsWith('.smolmachine') ? opts.image : undefined;
     const args = [
       'machine', 'create',
       '--name', opts.machineName,
-      '--image', opts.image,
       '--cpus', String(opts.cpus),
       '--mem', String(opts.memoryMb),
     ];
+    if (packMatch) {
+      const imagesDir = process.env.SMOLVM_IMAGES_DIR ?? join(homedir(), '.pisandboxed', 'images');
+      args.push('--from', join(imagesDir, `${packMatch[1]!}.smolmachine`));
+    } else if (rawPath) {
+      args.push('--from', rawPath);
+    } else {
+      args.push('--image', opts.image);
+    }
     // EGRESS MODEL (smolvm 1.17.0, verified): bare `--net` is allow-ALL — never
     // emit it for sandboxed workloads. `--allow-host` (repeatable) implies net
     // and gives deny-by-default allowlist. No net flags = fully sealed.
