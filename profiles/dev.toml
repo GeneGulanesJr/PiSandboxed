@@ -1,0 +1,16 @@
+image = "node26-dev"
+cpus = 4
+memory = 8192
+ttl = "30m"
+net = true
+
+[network]
+allow_hosts = ["registry.npmjs.org", "github.com"]
+
+[[mounts]]
+host = "/home/genegulanesjr/Documents/{project}"
+guest = "/workspace"
+mode = "rw"
+
+[secrets]
+ssh_agent = false

@@ -1,0 +1,16 @@
+image = "alpine:3.20"
+cpus = 2
+memory = 2048
+ttl = "10m"
+net = false
+
+[network]
+allow_hosts = []
+
+[[mounts]]
+host = "/home/genegulanesjr/Documents/{project}"
+guest = "/workspace"
+mode = "ro"
+
+[secrets]
+ssh_agent = false
