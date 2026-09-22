@@ -1058,18 +1058,18 @@ describe('SmolvmBackend', () => {
     expect(calls.some((c) => c.includes('machine') && c.includes('create') && c.includes('sb_x1'))).toBe(true);
     expect(calls.some((c) => c.includes('exec') && c.includes('uname'))).toBe(true);
     expect(calls.some((c) => c.includes('stop'))).toBe(true);
-    expect(calls.some((c) => c.includes('remove') || c.includes('rm'))).toBe(true);
+    expect(calls.some((c) => c.includes('delete') || c.includes('rm'))).toBe(true);
   });
 
-  it('net-off boot never passes a network flag; net-on passes --net and allow-hosts', async () => {
+  it('net-off boot never passes a network flag; allowlist boot passes --allow-host and never bare --net', async () => {
     const { backend, log } = stubBackend();
     await backend.boot({ machineName: 'sb_n', image: 'alpine', cpus: 1, memoryMb: 512, net: false, allowHosts: [], sshAgent: false, mounts: [] });
     await backend.boot({ machineName: 'sb_y', image: 'alpine', cpus: 1, memoryMb: 512, net: true, allowHosts: ['pypi.org'], sshAgent: false, mounts: [] });
     const calls = readFileSync(log, 'utf8');
     const [off, on] = calls.trim().split('\n');
-    expect(off).not.toMatch(/--net/);
-    expect(on).toMatch(/--net/);
-    expect(on).toMatch(/pypi\.org/);
+    expect(off).not.toMatch(/--net|--allow-host/);        // sealed: no network flags at all
+    expect(on).not.toMatch(/--net(?![-\w])/);             // allowlist mode: NO bare --net (it's allow-all!)
+    expect(on).toMatch(/--allow-host pypi\.org/);
   });
 
   it('exec surfaces exit code, stdout, stderr', async () => {
@@ -1127,9 +1127,14 @@ export class SmolvmBackend implements IsolationBackend {
       '--cpus', String(opts.cpus),
       '--mem', String(opts.memoryMb),
     ];
-    if (opts.net) {
-      args.push('--net');
+    // EGRESS MODEL (verified against smolvm 1.17.0, docs/smolvm-cli-reference.md):
+    // - bare `--net` is allow-ALL — NEVER pass it for sandboxed workloads
+    // - `--allow-host` is repeatable and implies net; allowlist mode = deny-by-default
+    // - no net flags at all = fully sealed (what profile.net=false must produce)
+    if (opts.allowHosts.length > 0) {
       for (const host of opts.allowHosts) args.push('--allow-host', host);
+    } else if (opts.net) {
+      args.push('--net'); // explicit full-outbound — no builtin profile does this
     }
     for (const m of opts.mounts) {
       args.push('--volume', `${m.host}:${m.guest}${m.readWrite ? '' : ':ro'}`);
@@ -1145,7 +1150,7 @@ export class SmolvmBackend implements IsolationBackend {
       machineName: opts.machineName,
       exec: (input: ExecInput) => this.#exec(opts.machineName, input),
       stop: async () => { await this.#run(['machine', 'stop', '--name', opts.machineName], { timeoutMs: 30_000 }); },
-      remove: async () => { await this.#run(['machine', 'remove', '--name', opts.machineName], { timeoutMs: 30_000 }); },
+      remove: async () => { await this.#run(['machine', 'delete', '--name', opts.machineName], { timeoutMs: 30_000 }); },
     };
   }
 
@@ -1194,7 +1199,7 @@ export class SmolvmBackend implements IsolationBackend {
 }
 ```
 
-**IMPORTANT — flag verification gate:** before marking this task complete, run `smolvm machine create --help` and confirm `--name --image --cpus --mem --net --allow-host --volume --ssh-agent --` exist as used. Where the real CLI differs (e.g., `--memory` vs `--mem`, `rm` vs `remove`), fix ONLY the flag strings in this file and the stub expectations, and note the correction in `docs/smolvm-cli-reference.md`.
+**IMPORTANT — flag verification gate:** the flags below were verified against smolvm 1.17.0 in Task 2 (`docs/smolvm-cli-reference.md` is the source of truth): `-n/--name`, `-I/--image`, `--cpus`, `--mem` (MiB), repeatable `-v/--volume HOST:GUEST[:ro|rw]`, repeatable `--allow-host` (implies net), `--ssh-agent`, `--` separator REQUIRED on create, exec takes trailing positional command (`--` accepted), stop subcommand `stop`, delete subcommand `delete` (alias `rm` — `remove` is INVALID). Egress rule: never bare `--net` for sandboxed workloads. Image priming: first-time OCI pulls need egress; images are pre-baked (Task 15), so boots stay offline.
 
 - [ ] **Step 5: Run test to verify it passes**
 
