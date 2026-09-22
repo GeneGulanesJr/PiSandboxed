@@ -25,4 +25,9 @@ describe('composition root wiring contract', () => {
     expect(src).toContain('app.close');
     expect(src).toContain('store.close');
   });
+
+  it('guards against stale dist builds (dogfood lesson: silent port-publish loss)', () => {
+    expect(src).toContain('checkBuildFreshness');
+    expect(src).toContain('WARNING');
+  });
 });

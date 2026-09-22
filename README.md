@@ -25,7 +25,9 @@ first start. The `sand` CLI reads it automatically:
 ```sh
 sand profiles                                   # list profiles
 ID=$(sand create --profile dev --project myproj)  # boots pack:node26-dev VM
-sand exec $ID node --version                    # v26.9.0 inside the VM
+sand exec $ID -- node --version                   # v26.9.0 inside the VM
+                                                  # NOTE: use -- before the command so its
+                                                  # own flags (e.g. sh -c) pass through
 sand status $ID                                 # state + expiry
 sand rm $ID                                     # destroy
 sand audit -n 20                                # audit log tail

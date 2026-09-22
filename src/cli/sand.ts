@@ -133,7 +133,7 @@ export async function runCli(argv: string[], io?: SandCliIo): Promise<number> {
       out(`${id}\n`);
     });
 
-  sub('exec', 'run a command inside a sandbox (streams output)')
+  sub('exec', 'run a command inside a sandbox (streams output). Prefix the command with -- so its own flags pass through: sand exec <id> -- sh -c "..."')
     .argument('<id>', 'sandbox id')
     .argument('<cmd...>', 'command and arguments to run')
     .action(async (id: string, cmd: string[]) => {

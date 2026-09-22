@@ -2,9 +2,10 @@
 // This is the ONLY module allowed to import core and adapters together
 // (dependency-cruiser rule: only-composition-root-wires-everything).
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, existsSync, statSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { openStore } from '../adapters/sqlite/store.js';
 import { ProfileRegistryImpl } from '../adapters/profiles/registry.js';
 import { SmolvmBackend } from '../adapters/smolvm/backend.js';
@@ -27,7 +28,31 @@ function loadOrCreateToken(): string {
   return token;
 }
 
+/** Warn loudly when dist/ is older than src/ — stale builds caused a silent
+ *  port-publishing failure in dogfooding (backend rewrite missing from dist). */
+export function checkBuildFreshness(selfPath: string, srcRoot: string): string | undefined {
+  try {
+    if (!selfPath.endsWith('.js')) return undefined; // running from src (tsx) — always fresh
+    const built = statSync(selfPath).mtimeMs;
+    let newest = 0;
+    const walk = (dir: string): void => {
+      for (const e of readdirSync(dir, { withFileTypes: true })) {
+        const p = join(dir, e.name);
+        if (e.isDirectory()) walk(p);
+        else if (e.name.endsWith('.ts')) newest = Math.max(newest, statSync(p).mtimeMs);
+      }
+    };
+    walk(srcRoot);
+    if (newest > built + 1000) {
+      return `dist/ is OLDER than src/ — rebuild: npm run build && restart sandd (stale builds silently lose behavior, e.g. port publishing)`;
+    }
+  } catch { /* best-effort guard */ }
+  return undefined;
+}
+
 export async function main(): Promise<{ stop: () => Promise<void> }> {
+  const stale = checkBuildFreshness(fileURLToPath(import.meta.url), resolve(import.meta.dirname ?? '.', '..', '..', 'src'));
+  if (stale) console.warn(`[sandd] WARNING: ${stale}`);
   const token = loadOrCreateToken();
   const store = openStore(join(STATE_DIR, 'state.db'));
   const registry = new ProfileRegistryImpl([join(process.cwd(), 'profiles'), join(STATE_DIR, 'profiles')]);
