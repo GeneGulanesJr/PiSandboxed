@@ -31,13 +31,18 @@ Nothing a subagent does inside a sandbox can touch the host outside policy-appro
 PiSubagent / pi agents / humans
         │  HTTP (localhost, token auth)
         ▼
-┌─────────────────── sandboxd (Node 26 / TypeScript daemon) ──────────────┐
-│  REST API          ← single entry point for everything                  │
-│  Policy Engine     ← validates every request against a named profile    │
-│  Mode Managers     ← ephemeral | pooled | persistent                    │
-│  smolvm Adapter    ← spawns smolvm CLI (the ONLY thing that does)       │
-│  State Store       ← SQLite (better-sqlite3): sandboxes, tasks, audit   │
-└──────────────────────────────────────────────────────────────────────────┘
+┌──────────────── sandboxd (Node 26 / TypeScript daemon) ─────────────────┐
+│  server/   REST API (fastify, auth, SSE)  ← thin HTTP↔core mapping     │
+│      ▼                                                                 │
+│  core/     SandboxService + typed event bus                            │
+│            depends ONLY on ports (interfaces), never on adapters       │
+│      ▼ ports                     ▲ adapters (implement ports)          │
+│  IsolationBackend ─────────── adapters/smolvm/  (only CLI spawner)     │
+│  ModeManager ──────────────── modes/ (ephemeral | pool | persistent)   │
+│  ProfileRegistry ──────────── adapters/profiles/ (builtin + user TOML) │
+│  SandboxRepo · AuditRepo ──── adapters/sqlite/  (state + audit sink)   │
+│  ArtifactExtractor ────────── promote/ (diff, artifacts strategies)    │
+└─────────────────────────────────────────────────────────────────────────┘
         ▼
    smolvm microVMs (libkrun + KVM) — network deny-by-default
 ```
@@ -50,6 +55,40 @@ direction; central policy enforcement is only enforceable at a choke point; CLI
 client comes nearly free; service can move to another box later. We wrap the
 smolvm CLI (stable contract) rather than embedding Rust crates (private,
 unstable internals; <200ms boot makes subprocess overhead negligible).
+
+### Modularity rules (enforced from Phase 1)
+
+Ports-and-adapters, right-sized to a single package — modularity lives in
+enforced boundaries, not packaging (no npm workspaces, no third-party plugin
+loading).
+
+1. **Dependency direction:** `server → core → ports ← adapters`. Core and ports
+   never import from `adapters/`, `modes/`, `server/`. Enforced in CI with
+   dependency-cruiser from the first commit.
+2. **Ports are the only seams:** `IsolationBackend`, `ModeManager`,
+   `ProfileRegistry`, `SandboxRepo`, `AuditRepo`, `ArtifactExtractor`. All are
+   TypeScript interfaces in `core/ports.ts`, defined in Phase 1 even where only
+   one implementation exists yet.
+3. **Event bus for cross-cutting concerns:** core emits typed events
+   (`sandbox.created`, `exec.completed`, `promote.applied`, `sandbox.reaped`,
+   `policy.denied`). Phase 1 ships one subscriber — the SQLite audit sink.
+   Metrics, webhooks, platform notifications subscribe later, no core edits.
+4. **Registration over wiring:** modes and extractor strategies self-register;
+   adding one is a new file + a registration line.
+
+### Extension points (future feature → where it lands)
+
+| Future feature | Touches | Core changes |
+|---|---|---|
+| pooled mode (Ph3) | new `modes/pool.ts` | registration only |
+| persistent mode (Ph3) | new `modes/persistent.ts` | registration only |
+| cloud/docker backend | new `IsolationBackend` adapter | config selection |
+| metrics dashboard | event subscriber | none |
+| webhook → PiSubagent | event subscriber | none |
+| new artifact type (HAR, video, traces) | new `ArtifactExtractor` strategy | registration only |
+| remote profile registry | new `ProfileRegistry` source | none |
+| GPU profiles | profile schema + smolvm adapter flags | additive schema |
+| PiSubagent typed SDK | separate package over REST | none |
 
 ## 4. Lifecycle modes (per-request field `mode`)
 
@@ -172,30 +211,40 @@ Transport: localhost HTTP only in v1.
 - **Validation:** zod (profile + request schemas)
 - **VM backend:** smolvm CLI (installed user-level, no sudo)
 - **Tests:** vitest, ≥80% coverage gate (platform convention)
+- **Architecture guard:** dependency-cruiser (enforces `server → core → ports ← adapters`)
 
 ## 11. Repo layout
 
 ```
 PiSandboxed/
 ├── src/
-│   ├── server/       # sandboxd bootstrap, routes, auth
-│   ├── policy/       # profile parser, validator, request gate
-│   ├── smolvm/       # CLI adapter: spawn, parse, lifecycle, errors
-│   ├── modes/        # ephemeral.ts, pool.ts, persistent.ts managers
-│   ├── store/        # sqlite schema + repositories
-│   └── cli/          # `sand` — thin API client
-├── profiles/         # built-in, immutable (untrusted, dev, build, browser-test)
-├── profiles.user/    # local overrides (gitignored)
-├── images/           # Smolfiles: node26-dev, chromium-playwright
-├── test/             # unit + integration (fake subagent E2E)
+│   ├── core/            # SandboxService + event bus — depends ONLY on ports
+│   │   ├── ports.ts     # IsolationBackend · ModeManager · ProfileRegistry ·
+│   │   │                # SandboxRepo · AuditRepo · ArtifactExtractor
+│   │   └── sandbox-service.ts
+│   ├── adapters/
+│   │   ├── smolvm/      # implements IsolationBackend (only CLI spawner)
+│   │   ├── sqlite/      # implements SandboxRepo + AuditRepo + audit event sink
+│   │   └── profiles/    # implements ProfileRegistry (builtin + user TOML)
+│   ├── modes/           # implements ModeManager: ephemeral.ts (pool/persistent later)
+│   ├── promote/         # ArtifactExtractor strategies (diff, artifacts)
+│   ├── server/          # fastify routes, auth, SSE — thin HTTP↔core mapping
+│   └── cli/             # `sand` — thin HTTP client
+├── profiles/            # built-in, immutable (untrusted, dev, build, browser-test)
+├── profiles.user/       # local additions (gitignored)
+├── images/              # Smolfiles: node26-dev, chromium-playwright
+├── test/                # unit + integration (fake subagent E2E)
 └── docs/
 ```
 
 ## 12. Phasing
 
-- **Phase 1 (MVP):** sandboxd + ephemeral mode + Policy Engine + `sand` CLI +
-  SQLite audit; profiles `untrusted`/`dev`/`build`; baked `node26-dev` image;
-  one end-to-end integration test simulating a PiSubagent task.
+- **Phase 1 (MVP):** ports + core service + event bus first, then ephemeral
+  mode, Policy Engine (profile validation lives in `adapters/profiles/` + core
+  gate), `sand` CLI, SQLite repos + audit sink; profiles
+  `untrusted`/`dev`/`build`; baked `node26-dev` image; dependency-cruiser rule
+  active from the first commit; one end-to-end integration test simulating a
+  PiSubagent task.
 - **Phase 2:** `browser-test` profile + `chromium-playwright` image + visual QA
   flow; **promote** workflow (completes the "testing changes" pillar).
 - **Phase 3:** `pooled` mode (branch fan-out + warm-pool manager); `persistent`
