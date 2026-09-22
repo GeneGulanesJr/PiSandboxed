@@ -1,0 +1,7 @@
+node_modules/
+dist/
+profiles.user/
+*.smolmachine
+*.smolcheckpoint
+.pisandboxed-local/
+coverage/
