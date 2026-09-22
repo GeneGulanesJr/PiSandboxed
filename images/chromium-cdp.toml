@@ -1,0 +1,21 @@
+# Headless Chromium with CDP on 9222 — the Phase 2 QA browser VM image.
+# Boot sealed (Task 3 profiles): `machine create --from <pack> -p 9222:9222
+# --net-backend virtio-net` then `machine update --no-net` BEFORE start —
+# virtio-net keeps inbound port publishing alive with egress disabled.
+# `net = true` below is bake-time only (apk needs egress during init).
+#
+# NOTE: Chrome 152 (new headless) binds DevTools to loopback ONLY — it
+# silently ignores --remote-debugging-address, so the published port would
+# RST against guest eth0. Hence chromium listens on 127.0.0.1:9223 and a
+# socat relay exposes it on 0.0.0.0:9222 for the host publish.
+image = "node:26-alpine"
+cpus = 4
+memory = 4096
+net = true
+
+init = [
+  "apk add --no-cache chromium socat font-noto font-noto-emoji nss curl bash util-linux",
+  "mkdir -p /opt/cdp /workspace/artifacts",
+  "printf '#!/bin/sh\\n/usr/bin/chromium-browser --headless=new --remote-debugging-port=9223 --no-sandbox --disable-gpu --disable-dev-shm-usage --user-data-dir=/tmp/cdp-profile >/tmp/chrome.log 2>&1 &\\nexec /usr/bin/socat TCP4-LISTEN:9222,fork,reuseaddr,bind=0.0.0.0 TCP4:127.0.0.1:9223\\n' > /opt/cdp/start-chromium.sh",
+  "chmod +x /opt/cdp/start-chromium.sh",
+]
