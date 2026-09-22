@@ -113,3 +113,72 @@ npm run test:vm                                   # real-VM E2E (needs smolvm + 
 
 See `docs/superpowers/specs/` for the full design and `docs/smolvm-cli-reference.md`
 for the captured smolvm 1.17.0 semantics (pack booting, egress model, RO mounts).
+
+## Visual QA (Phase 2)
+
+Hardware-isolated browser testing: real Chromium runs **inside the VM**; the
+browser-harness, the Jev judgment calls, and the report stay **host-side** —
+LLM/API keys never enter the sandbox.
+
+```text
+ subagent (host) — agents/qa-visual.md            TYPE_SAFE_API_KEY lives here
+   │ sand create/exec/rm        └─ browser-harness (stdin python tasks)
+   │                               qa/harness.ts · qa/jev.ts · qa/report.ts
+   │                                      │ BU_CDP_URL=http://127.0.0.1:9222
+   ▼                                      ▼ (CDP wire, published port)
+ ┌─ smolvm microVM — pack:chromium-cdp ────────────────┐
+ │  node static server :8080     headless Chromium     │
+ │                               CDP :9222 (socat→9223)│
+ └─────────────────────────────────────────────────────┘
+```
+
+Host prereqs: `uv`, then the QA venv (see `docs/browser-harness-notes.md`):
+
+```sh
+uv venv .venv-qa && uv pip install --python .venv-qa/bin/python -r qa/requirements.txt
+# TYPE_SAFE_API_KEY optional — unset ⇒ Jev verdicts are INCONCLUSIVE, never errors
+```
+
+Quickstart (full loop + hard rules: `agents/qa-visual.md`):
+
+```sh
+PROJ=$HOME/Documents/qa-demo; cp -r qa/demo-site "$PROJ/"
+ID=$(SAND_URL=http://127.0.0.1:7391 node bin/sand.mjs create --profile browser-test --project "$PROJ")
+node bin/sand.mjs exec $ID -- sh -c 'printf "%s\n" \
+  "const h=require(\"http\"),f=require(\"fs\");" \
+  "h.createServer((q,s)=>s.end(f.readFileSync(\"/workspace/demo-site/index.html\"))).listen(8080);" \
+  > /tmp/serve.js; cd /workspace/demo-site \
+  && nohup node /tmp/serve.js >/tmp/site.log 2>&1 & sleep 1; \
+  wget -q -T 2 -O - http://127.0.0.1:8080/ | head -c 15'
+node bin/sand.mjs exec $ID -- sh -c 'nohup /opt/cdp/start-chromium.sh >/tmp/chrome.log 2>&1 & sleep 4; \
+  wget -q -O - http://127.0.0.1:9222/json/version'
+npx tsx qa-run.ts        # runHarnessTask({cdpUrl: 'http://127.0.0.1:9222', ...})
+                         # → jev.verify(...) per checkpoint → writeReport(artifacts)
+node bin/sand.mjs rm $ID && smolvm machine list   # ALWAYS — even on failure
+```
+
+`qa-run.ts` (the snippet runner — `artifacts/` + `report.{json,md}` land under
+`$PROJ` via the rw mount):
+
+```ts
+import { runHarnessTask } from './qa/harness.js';
+import { makeJev } from './qa/jev.js';
+import { writeReport } from './qa/report.js';
+const jev = makeJev();
+const h = await runHarnessTask({ cdpUrl: 'http://127.0.0.1:9222',
+  task: 'new_tab("http://127.0.0.1:8080/")\nwait_for_load()\nprint(page_info())',
+  workspaceDir: `${process.env.PROJ}/qa-workspace` });
+const verdict = await jev.verify('Does the page state show the demo app loaded?',
+  { transcript: h.transcript });
+writeReport({ sandboxId: process.env.ID!, url: 'http://127.0.0.1:8080/',
+  startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),
+  checks: [{ name: 'demo loads', verdict, screenshots: [], detail: h.transcript.slice(0, 400) }],
+  harnessTranscript: h.transcript }, `${process.env.PROJ}/artifacts`);
+```
+
+Sealing: a profile with `ports` (here `9222:9222`) is forced onto the
+virtio-net stack with **outbound-localhost-only** egress, and
+`browser-test` allowlists no hosts — in-VM URLs only. Sealed egress is
+re-proven by the E2E gate (`test/integration/visual-qa.e2e.test.ts` asserts
+an in-guest `wget https://example.com` fails while host→guest CDP over the
+published port works).
