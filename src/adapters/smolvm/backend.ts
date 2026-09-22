@@ -42,7 +42,11 @@ export class SmolvmBackend implements IsolationBackend {
     }
     // EGRESS MODEL (smolvm 1.17.0, verified): bare `--net` is allow-ALL — never
     // emit it for sandboxed workloads. `--allow-host` (repeatable) implies net
-    // and gives deny-by-default allowlist. No net flags = fully sealed.
+    // and gives deny-by-default allowlist. No net flags = fully sealed — BUT a
+    // pack manifest can bake network:true in (bake-time Smolfile needs net for
+    // the in-guest pull). Verified: create-time --allow-host TIGHTENS a net=true
+    // pack into allowlist, but a sealed boot must explicitly enforce
+    // `machine update --no-net` (verified: wget then fails with 'bad address').
     if (opts.allowHosts.length > 0) {
       for (const host of opts.allowHosts) args.push('--allow-host', host);
     } else if (opts.net) {
@@ -56,13 +60,17 @@ export class SmolvmBackend implements IsolationBackend {
     args.push('--', '/bin/sh', '-c', 'exec sleep infinity');
 
     await this.#run(args, { timeoutMs: 30_000 });
+    if (!opts.net && opts.allowHosts.length === 0) {
+      // Sealed boot: override any net=true baked into a pack/checkpoint manifest.
+      await this.#run(['machine', 'update', '--name', opts.machineName, '--no-net'], { timeoutMs: 30_000 });
+    }
     await this.#run(['machine', 'start', '--name', opts.machineName], { timeoutMs: 30_000 });
 
     return {
       machineName: opts.machineName,
       exec: (input: ExecInput) => this.#exec(opts.machineName, input),
       stop: async () => { await this.#run(['machine', 'stop', '--name', opts.machineName], { timeoutMs: 30_000 }); },
-      remove: async () => { await this.#run(['machine', 'delete', '--name', opts.machineName], { timeoutMs: 30_000 }); },
+      remove: async () => { await this.#run(['machine', 'delete', '--force', '--name', opts.machineName], { timeoutMs: 30_000 }); },
     };
   }
 

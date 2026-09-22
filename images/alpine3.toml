@@ -1,0 +1,10 @@
+# Minimal sealed-net guest for the `untrusted` profile.
+# smolvm refuses `machine create --image <registry-ref>` without network
+# ("the pull can never succeed" — fail-closed by design), so netless
+# sandboxes must boot from a locally baked pack via `--from`.
+image = "alpine:3.20"
+cpus = 2
+memory = 2048
+net = true
+
+init = []

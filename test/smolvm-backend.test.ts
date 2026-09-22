@@ -79,6 +79,17 @@ describe('SmolvmBackend', () => {
     expect(calls).toContain('--image alpine:3.20');
   });
 
+  it('sealed boot enforces machine update --no-net (pack manifests can bake net=true)', async () => {
+    const { backend, log } = stubBackend();
+    await backend.boot({ machineName: 'sb_s', image: 'pack:alpine3', cpus: 1, memoryMb: 512, net: false, allowHosts: [], sshAgent: false, mounts: [] });
+    const calls = readFileSync(log, 'utf8').trim().split('\n');
+    const createIdx = calls.findIndex((c) => c.includes('create'));
+    const updateIdx = calls.findIndex((c) => c.includes('update') && c.includes('--no-net'));
+    const startIdx = calls.findIndex((c) => c.includes('start'));
+    expect(updateIdx).toBeGreaterThan(createIdx);
+    expect(startIdx).toBeGreaterThan(updateIdx);
+  });
+
   it('mounts pass through with :ro suffix for read-only', async () => {
     const { backend, log } = stubBackend();
     await backend.boot({ machineName: 'sb_m', image: 'alpine', cpus: 1, memoryMb: 512, net: false, allowHosts: [], sshAgent: false,
