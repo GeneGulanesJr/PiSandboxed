@@ -17,17 +17,33 @@ describe('runHarnessTask', () => {
     workspaceDir: '/tmp/wk',
   };
 
-  it('invokes the venv browser-harness binary with --reload, stdin script, and harness env', async () => {
+  it('invokes the venv browser-harness binary with a daemon-bounce pre-step, then a flag-free stdin script run', async () => {
     const { run, calls } = fakeRunner();
     await runHarnessTask(base, run);
-    expect(calls).toHaveLength(1);
-    const { cmd, env, stdin } = calls[0]!;
-    expect(cmd[0]).toMatch(/browser-harness$/);
-    expect(cmd).toContain('--reload');
+    expect(calls).toHaveLength(2);
+    // pre-step: standalone --reload (stops any stale daemon so env is re-read);
+    // it must NOT carry the script — --reload never executes stdin
+    expect(calls[0]!.cmd[0]).toMatch(/browser-harness$/);
+    expect(calls[0]!.cmd).toContain('--reload');
+    expect(calls[0]!.stdin).toBe('');
+    // real run: no flags, script on stdin
+    const { cmd, env, stdin } = calls[1]!;
+    expect(cmd).toEqual([calls[0]!.cmd[0]!]);
     expect(env!['BU_CDP_URL']).toBe('http://127.0.0.1:9222');
     expect(env!['BH_AGENT_WORKSPACE']).toBe('/tmp/wk');
     expect(env!['BH_TAB_MARKER']).toBe('0');
     expect(stdin).toContain('new_tab("https://example.com")');
+  });
+
+  it('injects extraEnv and lets it override the defaults (e.g. per-run BH_HOME)', async () => {
+    const { run, calls } = fakeRunner();
+    await runHarnessTask(
+      { ...base, extraEnv: { BH_HOME: '/tmp/bh-run-42', BH_TAB_MARKER: '0' } },
+      run,
+    );
+    const { env } = calls[0]!;
+    expect(env!['BH_HOME']).toBe('/tmp/bh-run-42');
+    expect(env!['BU_CDP_URL']).toBe('http://127.0.0.1:9222'); // defaults intact
   });
 
   it('creates the workspace dir before the run', async () => {
@@ -71,9 +87,11 @@ describe('runHarnessTask', () => {
 
   it('times out: kills and returns ok=false', async () => {
     const run = async (_cmd: string[], opts: { timeoutMs?: number }) => {
-      expect(opts.timeoutMs).toBe(50);
-      await new Promise((r) => setTimeout(r, 10)); // runner-level timeout simulation
-      return { stdout: '', stderr: 'timed out', exitCode: 124 };
+      if (opts.timeoutMs === 50) {
+        await new Promise((r) => setTimeout(r, 10)); // runner-level timeout simulation
+        return { stdout: '', stderr: 'timed out', exitCode: 124 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 }; // daemon-bounce pre-step
     };
     const res = await runHarnessTask({ ...base, timeoutMs: 50 }, run);
     expect(res.ok).toBe(false);

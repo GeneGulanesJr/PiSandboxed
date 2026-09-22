@@ -8,6 +8,10 @@ export interface HarnessOptions {
   workspaceDir: string; // per-task helper workspace (consumer project dir)
   pythonBin?: string; // default: <repoRoot>/.venv-qa/bin/browser-harness (repoRoot = resolve(import.meta.dirname, '..'))
   timeoutMs?: number; // default 300_000
+  /** Extra env injected into the harness process (wins over the defaults below).
+   *  Use for per-run daemon isolation, e.g. BH_HOME — browser-harness keeps daemon
+   *  sockets/state under BH_HOME and a live daemon ignores later BU_CDP_URL changes. */
+  extraEnv?: Record<string, string>;
 }
 
 export interface HarnessResult {
@@ -34,8 +38,14 @@ export async function runHarnessTask(
     BU_CDP_URL: opts.cdpUrl,
     BH_AGENT_WORKSPACE: workspace,
     BH_TAB_MARKER: '0',
+    ...(opts.extraEnv ?? {}),
   } as Record<string, string>;
-  const r = await run([bin, '--reload'], {
+  // Best-effort daemon bounce: a live daemon ignores later BU_CDP_URL changes
+  // (browser-harness notes §7.1). `--reload` is a STANDALONE stop-daemon command
+  // (verified: exits 0 and never executes stdin), so the task itself runs in a
+  // second, flag-free invocation whose daemon auto-starts with our env.
+  await run([bin, '--reload'], { env, stdin: '', timeoutMs: 15_000 });
+  const r = await run([bin], {
     env,
     stdin: opts.task,
     timeoutMs: opts.timeoutMs ?? 300_000,

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>App</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #f4f5f7;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      margin: 0;
+    }
+    main {
+      background: #fff;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+      padding: 2rem;
+      width: min(22rem, 90vw);
+    }
+    h1 { margin: 0 0 1rem; font-size: 1.25rem; }
+    label { display: block; margin: 0.75rem 0 0.25rem; font-size: 0.875rem; }
+    input {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #c8cbd0;
+      border-radius: 4px;
+      font-size: 1rem;
+    }
+    button {
+      margin-top: 1rem;
+      width: 100%;
+      padding: 0.5rem;
+      border: 0;
+      border-radius: 4px;
+      background: #2563eb;
+      color: #fff;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button:hover { background: #1d4ed8; }
+    p { color: #555; font-size: 0.875rem; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="login-screen">
+      <h1>Sign in</h1>
+      <form id="login-form">
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" placeholder="you@example.com" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" placeholder="********" required>
+        <button type="submit">Sign in</button>
+      </form>
+    </section>
+    <section id="dashboard" hidden>
+      <h1>Dashboard</h1>
+      <p>Welcome back &mdash; you are signed in.</p>
+      <button id="logout-btn" type="button">Log out</button>
+    </section>
+  </main>
+  <script>
+    const form = document.getElementById('login-form');
+    const loginScreen = document.getElementById('login-screen');
+    const dashboard = document.getElementById('dashboard');
+    form.addEventListener('submit', (e) => {
+      e.preventDefault(); // pure DOM demo — no network
+      loginScreen.hidden = true;
+      dashboard.hidden = false;
+    });
+    document.getElementById('logout-btn').addEventListener('click', () => {
+      dashboard.hidden = true;
+      loginScreen.hidden = false;
+      form.reset();
+    });
+  </script>
+</body>
+</html>
