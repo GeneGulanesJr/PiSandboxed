@@ -739,3 +739,45 @@ Network:
       --no-proxy <LIST>
           Comma-separated NO_PROXY list of hosts/CIDRs that bypass the proxy during image pull. Example: `127.0.0.1,localhost,.internal`
 ```
+
+---
+
+## Port publishing (verified 2026-09-22, Phase 2 spike)
+
+Mechanism: **`-p, --port <PORT[-END]|HOST[-END]:GUEST[-END]>`** — "Expose port from VM to host (single port or one-to-one range, repeatable)". Valid on `machine create`, `machine run`, `machine branch` (pins child forwards), and `machine update` (`-p` adds, `--remove-port` removes; stopped machine only).
+
+### Empirical matrix (all against the baked `alpine3` pack; host `curl` against an in-guest busybox-nc listener)
+
+Listener recipe used in every test (verified working — busybox nc in alpine3 supports `-l -p PORT -e PROG`):
+
+```sh
+# 1. response file in guest (NOTE: /tmp is tmpfs — recreate after every stop/start)
+smolvm machine exec --name <vm> -- sh -c 'printf "HTTP/1.1 200 OK\r\nContent-Length: 7\r\nConnection: close\r\n\r\nCDP-OK\n" > /tmp/resp'
+# 2. persistent listener, detached (exec -d exists exactly for this: "can host long-lived services — e.g. a server bound to a published port")
+smolvm machine exec --name <vm> -d -- sh -c 'while true; do nc -l -p 9222 -e cat /tmp/resp; done'
+# 3. from the HOST
+curl -s --max-time 3 http://127.0.0.1:9222/   # → CDP-OK
+```
+
+| # | Backend | Net state | Create flags | Host `curl 127.0.0.1:9222` |
+|---|---------|-----------|--------------|----------------------------|
+| 1 | tsi (default) | enabled (pack default) | `-p 9222:9222` | `CDP-OK`, exit 0 |
+| 2 | tsi (default) | **disabled** (`machine update --no-net`) | same | **curl exit 52, empty reply** — host socket still binds, guest listener verified alive (`ps` in guest), but no data path |
+| 3 | tsi (default) | re-enabled (`machine update --net`) | same | `CDP-OK`, exit 0 |
+| 4 | virtio-net | enabled | `--net-backend virtio-net -p 9222:9222` | `CDP-OK`, exit 0 |
+| 5 | virtio-net | **disabled** (`machine update --no-net`) | same | **`CDP-OK`, exit 0 — inbound publish survives `--no-net` on virtio-net** |
+| 6 | virtio-net (forced) | allowlist egress | `--allow-host example.com -p 9222:9222` | `CDP-OK`, exit 0; allowlist verified active (example.com `EGRESS_OK`, registry.npmjs.org `EGRESS_FAIL` / `wget: bad address`) |
+
+### Verified facts
+
+1. **Default backend is tsi** (libkrun TSI): a machine record created without `--net-backend` carries no `network_backend` key; one created with `--net-backend virtio-net` stores `"network_backend":"virtio-net"` in `<data-dir>/vm.config.json`.
+2. **On tsi, inbound publishing requires network enabled.** `machine update --no-net` keeps the host-side bind (TCP connect succeeds) but the guest never answers → curl exit 52. Re-enabling with `machine update --net` restores forwarding on the same machine.
+3. **On virtio-net, inbound publishing works even with `--no-net`.** This is the no-egress-but-host-reachable combination needed for the QA browser VM (CDP inbound, zero outbound). **Tasks 2–4 should create the browser VM with `--net-backend virtio-net`.**
+4. **`--allow-host`/`--allow-cidr` force the virtio-net backend** regardless of default (observed in start error text: `configure virtio-net: failed to start virtio network runtime` on a machine with no explicit backend flag). Allowlist egress and inbound publishing coexist fine.
+5. **Host-side bind shape:** host port binds on `127.0.0.1:<port>` AND `[::1]:<port>`, owned by the VM's own process (`/proc/self/exe _boot-vm <data-dir>/boot-config.json`) — no separate proxy daemon.
+6. **Host-port conflicts are enforced at start:** starting a second machine while a running machine holds the same host port fails (`Error: ... host port 9222 is already in use by running machine 'spike-p2'`). There is also a **brief post-stop release window**: `start` immediately after `stop` of the previous holder failed with `cannot publish host TCP 127.0.0.1:9222 to guest TCP 9222: Address already in use (os error 98)`; a retry seconds later succeeded. Adapters should retry `start` on EADDRINUSE.
+7. **Config readback:** `machine ls -v` shows `Port: 9222 -> 9222`; `machine ls --json` exposes a `ports` count only; the full mapping lives in `<machine data-dir>/vm.config.json` as `"ports":[{"host":9222,"guest":9222}]` (file appears once the machine has been started).
+8. **Pack default:** the baked `alpine3` pack has network ENABLED with no flags (`machine ls -v` → `Network: enabled` for a fresh no-flag VM) — `-p` alone is sufficient on pack-created machines. `machine create` has no `--no-net` flag; net is only disableable post-create via `machine update --no-net`.
+9. **Gotcha:** guest `/tmp` is tmpfs — files written there (e.g. our `/tmp/resp`) vanish on stop/start. One mid-test false alarm (curl 52 after restart) was caused by this, not by forwarding. Long-lived guest state belongs on the storage/overlay disk.
+
+All spike VMs (`spike-p0`…`spike-p3`) were deleted after testing (`machine delete -f`); `machine ls` shows none remaining.
