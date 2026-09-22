@@ -1,0 +1,12 @@
+PAGE_INFO: {'url': 'http://127.0.0.1:8080/', 'title': 'App', 'w': 780, 'h': 437, 'sx': 0, 'sy': 0, 'pw': 780, 'ph': 437}
+FORM_STATE: {"form":true,"email":true,"pass":true,"submit":true,"dashHiddenAtStart":true}
+EMAIL_VALUE_AFTER_TYPE: qa-agent@example.com
+PASS_LEN_AFTER_TYPE: 31
+SUBMIT_XY: {"x":390,"y":317}
+WAIT_DASHBOARD_VISIBLE_OK: True
+DASHBOARD_STATE: {"dashboardVisible":true,"h1":"Dashboard","loginGone":true,"url":"http://127.0.0.1:8080/"}
+DASHBOARD_VISIBLE: True
+DASHBOARD_H1: Dashboard
+LOGIN_SCREEN_GONE: True
+SCREENSHOT_PATH: /home/genegulanesjr/Documents/sand-jev-live-g3Ndge/artifacts/a-dashboard.png
+SCREENSHOT_SIZE: 8708

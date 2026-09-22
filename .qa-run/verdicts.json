@@ -1,0 +1,62 @@
+{
+  "state": {
+    "dashboardVisible": true,
+    "h1": "Dashboard",
+    "loginGone": true,
+    "url": "http://127.0.0.1:8080/"
+  },
+  "positive": {
+    "value": true,
+    "confidence": 0.7,
+    "inconclusive": true,
+    "raw": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "verdict": {
+          "type": "noul",
+          "noul": 0.7
+        }
+      },
+      "usage": {
+        "input_tokens": 303,
+        "output_tokens": 21
+      }
+    }
+  },
+  "negative": {
+    "value": false,
+    "confidence": 0.96,
+    "inconclusive": false,
+    "raw": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "verdict": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "usage": {
+        "input_tokens": 302,
+        "output_tokens": 21
+      }
+    }
+  },
+  "control": {
+    "value": true,
+    "confidence": 0.96,
+    "inconclusive": false,
+    "raw": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "verdict": {
+          "type": "noul",
+          "noul": 0.04
+        }
+      },
+      "usage": {
+        "input_tokens": 302,
+        "output_tokens": 21
+      }
+    }
+  }
+}

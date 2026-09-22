@@ -148,6 +148,15 @@ it away.
   screenshot attached to the state (e.g. base64 or path + extracted text);
   if still low-confidence, leave it INCONCLUSIVE and say what evidence is
   missing.
+- **State engineering (live-verified):** Jev confidence scales with STATE
+  EVIDENCE RICHNESS, not question phrasing. The same login question scored
+  0.7 (INCONCLUSIVE) on `{h1, dashboardVisible, loginGone}` and 0.97 (PASS)
+  on `{h1, dashboardVisible, loginGone, welcomeText, logoutButtonVisible,
+  loginScreenHidden}`. Always capture and pass RICH state: visible text
+  snippets, button presence, visibility flags, URL, title.
+- **Negative control:** include one opposite-question judgment per run
+  (e.g. "is the user still on the login screen?" after login → confident NO).
+  A healthy model returns a confident NO; anything else means trouble.
 - Final verdict for the whole run: PASS only if every check is PASS;
   any INCONCLUSIVE ⇒ the run is NOT clean, report it as such.
 

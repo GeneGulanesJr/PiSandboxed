@@ -1,0 +1,30 @@
+{
+  "rich": {
+    "url": "http://127.0.0.1:8080/",
+    "title": "App",
+    "dashboardVisible": true,
+    "h1": "Dashboard",
+    "welcomeText": "Welcome back — you are signed in.",
+    "logoutButtonVisible": true,
+    "loginScreenHidden": true,
+    "emailFieldStillVisible": true
+  },
+  "positiveRich": {
+    "value": true,
+    "confidence": 0.97,
+    "inconclusive": false,
+    "raw": {
+      "model": "jev-1.13.0",
+      "answers": {
+        "verdict": {
+          "type": "noul",
+          "noul": 0.97
+        }
+      },
+      "usage": {
+        "input_tokens": 380,
+        "output_tokens": 21
+      }
+    }
+  }
+}
