@@ -55,6 +55,14 @@ Record in `docs/browser-harness-notes.md`: install command + resolved version, t
 
 ---
 
+## Task 1 spike findings (authoritative — Tasks 2–4 MUST use these)
+
+- **Ports:** `-p/--port HOST:GUEST` on create/run/update. **Inbound forwarding works ONLY on virtio-net when egress is sealed**: verified recipe = `--net-backend virtio-net` + `--no-net` → CDP reachable, egress sealed. TSI + no-net silently swallows data (exit 52). `--allow-host` forces virtio-net anyway.
+- **browser-harness 0.1.13** (Python ≥3.11, uv venv `.venv-qa`): stdin-Python CLI `browser-harness <<'PY' … PY`; 72 helpers pre-imported (`page_info`, `new_tab`, `goto_url`, `js`, `cdp`, `click_at_xy`, `wait_for_*`); existing-CDP wiring via `BU_CDP_URL=http://host:port` (or `BU_CDP_WS=ws://…`); NO LLM key needed (fast path `page_info()`); workspace `$BH_AGENT_WORKSPACE/agent_helpers.py`; tab marker emoji off via `BH_TAB_MARKER=0`. Endpoint read at daemon start → adapter passes `--reload` on endpoint change. Dead endpoint = 30s retry then exit 1.
+- **Guest `/tmp` is tmpfs** — state there is lost on VM restart; keep runtime state in `/workspace`.
+
+---
+
 ### Task 2: `chromium-cdp` image
 
 **Files:**
@@ -215,7 +223,7 @@ Gated on `RUN_VM_TESTS=1` + smolvm + the chromium-cdp pack existing.
 - [ ] **Step 1: The E2E** —
 1. create sandbox `browser-test`, project = a temp dir under `~/Documents` (Phase 1 lesson) containing `qa/demo-site/`
 2. exec: start the static site in-guest (`cd /workspace/qa/demo-site && (python3 -m http.server 8080 >/dev/null 2>&1 &) ; sleep 1`) and launch `/opt/cdp/start-chromium.sh` in background
-3. HOST-side CDP smoke (no LLM key): `curl http://127.0.0.1:9222/json/version` → Browser JSON; then `curl http://127.0.0.1:9222/json/new?http://localhost:8080/` → tab opens; `/json` lists it
+3. HOST-side CDP smoke (no LLM key): `curl http://127.0.0.1:9222/json/version` → Browser JSON; then `curl http://127.0.0.1:9222/json/new?http://localhost:8080/` → tab opens; `/json` lists it. NOTE: sandbox must be created with the verified recipe — ports force `--net-backend virtio-net` in the backend (Task 3); egress stays sealed (`--no-net`).
 4. harness run (ONLY if browser-harness installed — `describe.skipIf`): `runHarnessTask({cdpUrl, task: "open http://localhost:8080 and report the page title", workspaceDir})` → ok=true
 5. jev checks: mocked in CI; if `TYPE_SAFE_API_KEY` present, one real `verify("does the page contain a login form?", json/title state)`
 6. `writeReport(...)` → artifacts on host via mount; assert files exist and markdown contains the check
