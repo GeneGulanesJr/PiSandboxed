@@ -1,3 +1,4 @@
+import { isAbsolute } from 'node:path';
 import type {
   ArtifactExtractor, CreateSandboxInput, ExecInput, ExecOutput, ManagedSandbox,
   ModeManager, ProfileRegistry, PromoteResult, ResolvedProfile, SandboxBus,
@@ -9,7 +10,6 @@ export interface SandboxServiceOptions {
   modes: Map<string, ModeManager>;
   bus: SandboxBus;
   now?: () => Date;
-  resolveProject?: (p: string) => string;
 }
 
 export class PolicyError extends Error {}
@@ -19,7 +19,6 @@ export class SandboxService {
   #modes: Map<string, ModeManager>;
   #bus: SandboxBus;
   #now: () => Date;
-  #resolveProject: (p: string) => string;
   #reaper: ReturnType<typeof setInterval> | undefined;
   /** last expanded profile (exposed for tests) */
   lastResolved: ResolvedProfile | undefined;
@@ -29,7 +28,6 @@ export class SandboxService {
     this.#modes = opts.modes;
     this.#bus = opts.bus;
     this.#now = opts.now ?? (() => new Date());
-    this.#resolveProject = opts.resolveProject ?? ((p) => p);
   }
 
   async create(input: CreateSandboxInput): Promise<SandboxInfo> {
@@ -47,12 +45,25 @@ export class SandboxService {
       this.#deny(`profile "${profile!.name}" mounts {project} — "project" is required`, input);
     }
 
+    // {project} expansion: relative paths substitute into the profile's template
+    // prefix ("…/Documents/{project}" + "GulanesKorp/repo"); ABSOLUTE paths are
+    // used verbatim — the template prefix is only a default root for relative
+    // input, never something to splice an absolute path behind.
+    const expandHost = (host: string): string =>
+      isAbsolute(input.project!) ? input.project! : host.replace('{project}', input.project!);
+
     const resolved: ResolvedProfile = needsProject
-      ? { ...profile!, mounts: profile!.mounts.map((m) => ({ ...m, host: m.host.replace('{project}', this.#resolveProject(input.project!)) })) }
+      ? { ...profile!, mounts: profile!.mounts.map((m) => ({ ...m, host: expandHost(m.host) })) }
       : profile!;
     this.lastResolved = resolved;
 
-    const info = await mode!.create(input, resolved);
+    let info: SandboxInfo;
+    try {
+      info = await mode!.create(input, resolved);
+    } catch (err) {
+      this.#bus.emit('sandbox.failed', { error: (err as Error).message, request: input });
+      throw err;
+    }
     this.#bus.emit('sandbox.created', { id: info.id, profile: info.profile, mode: info.mode });
     return info;
   }

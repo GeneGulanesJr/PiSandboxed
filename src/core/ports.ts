@@ -160,6 +160,7 @@ export type SandboxEventMap = {
   'promote.applied': { id: SandboxId; kind: string; detail: string };
   'sandbox.destroyed': { id: SandboxId; reason: string };
   'sandbox.reaped': { id: SandboxId; expiresAt: string };
+  'sandbox.failed': { error: string; request: unknown };
 }
 
 export type SandboxBus = EventBus<SandboxEventMap>;

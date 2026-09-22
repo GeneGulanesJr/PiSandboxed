@@ -45,10 +45,35 @@ function setup(profile: ResolvedProfile = PROFILE) {
 describe('SandboxService.create — policy gate', () => {
   it('expands {project} placeholder and delegates to mode', async () => {
     const { svc, mode } = setup();
-    const info = await svc.create({ profile: 'dev', mode: 'ephemeral', project: '/tmp/p' });
+    const info = await svc.create({ profile: 'dev', mode: 'ephemeral', project: 'tmp/p' });
     expect(info.id).toBe('sb_1');
     const resolved = (svc as unknown as { lastResolved: ResolvedProfile }).lastResolved;
-    expect(resolved.mounts[0]!.host).toBe('/h//tmp/p');
+    expect(resolved.mounts[0]!.host).toBe('/h/tmp/p');
+  });
+
+  it('ABSOLUTE project path is used verbatim as mount host (no template prefix splicing)', async () => {
+    const { svc } = setup();
+    await svc.create({ profile: 'dev', mode: 'ephemeral', project: '/home/genegulanesjr/Documents/GulanesKorp/repo' });
+    const resolved = (svc as unknown as { lastResolved: ResolvedProfile }).lastResolved;
+    expect(resolved.mounts[0]!.host).toBe('/home/genegulanesjr/Documents/GulanesKorp/repo');
+  });
+
+  it('RELATIVE project path substitutes into the template prefix', async () => {
+    const { svc } = setup();
+    await svc.create({ profile: 'dev', mode: 'ephemeral', project: 'GulanesKorp/repo' });
+    const resolved = (svc as unknown as { lastResolved: ResolvedProfile }).lastResolved;
+    expect(resolved.mounts[0]!.host).toBe('/h/GulanesKorp/repo');
+  });
+
+  it('failed create emits sandbox.failed and rethrows (auditability)', async () => {
+    const { svc, mode, bus } = setup();
+    const failed: Array<{ error: string }> = [];
+    bus.on('sandbox.failed', (e) => failed.push({ error: e.error }));
+    (mode as unknown as { create: (input: CreateSandboxInput, profile: ResolvedProfile) => Promise<SandboxInfo> }).create =
+      async () => { throw new Error('mount source not found: /x'); };
+    await expect(svc.create({ profile: 'dev', mode: 'ephemeral', project: '/p' })).rejects.toThrow(/mount source/);
+    expect(failed).toHaveLength(1);
+    expect(failed[0]!.error).toContain('mount source not found');
   });
 
   it('denies unknown profile and emits policy.denied', async () => {

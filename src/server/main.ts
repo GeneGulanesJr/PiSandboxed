@@ -35,7 +35,7 @@ export async function main(): Promise<{ stop: () => Promise<void> }> {
   const modes = new Map([['ephemeral', new EphemeralMode(backend, store.sandboxes)]]);
   const bus: SandboxBus = new EventBus<SandboxEventMap>();
 
-  const events = ['sandbox.created', 'exec.completed', 'policy.denied', 'promote.applied', 'sandbox.destroyed', 'sandbox.reaped'] as const;
+  const events = ['sandbox.created', 'exec.completed', 'policy.denied', 'promote.applied', 'sandbox.destroyed', 'sandbox.reaped', 'sandbox.failed'] as const;
   for (const event of events) {
     bus.on(event, (e) => {
       store.audit.append({
