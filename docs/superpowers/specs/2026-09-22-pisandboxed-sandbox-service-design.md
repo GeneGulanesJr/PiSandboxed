@@ -241,12 +241,13 @@ PiSandboxed/
 
 - **Phase 1 (MVP):** ports + core service + event bus first, then ephemeral
   mode, Policy Engine (profile validation lives in `adapters/profiles/` + core
-  gate), `sand` CLI, SQLite repos + audit sink; profiles
+  gate), promote extractors (diff + artifacts — small, completes the
+  change-testing story early), `sand` CLI, SQLite repos + audit sink; profiles
   `untrusted`/`dev`/`build`; baked `node26-dev` image; dependency-cruiser rule
   active from the first commit; one end-to-end integration test simulating a
   PiSubagent task.
 - **Phase 2:** `browser-test` profile + `chromium-playwright` image + visual QA
-  flow; **promote** workflow (completes the "testing changes" pillar).
+  flow.
 - **Phase 3:** `pooled` mode (branch fan-out + warm-pool manager); `persistent`
   mode + TTL reaper; GPU/WebGL profile; python/headless-browser image variants;
   metrics.
