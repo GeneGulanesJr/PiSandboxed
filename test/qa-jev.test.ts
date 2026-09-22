@@ -50,15 +50,35 @@ describe('makeJev', () => {
     delete process.env.TYPE_SAFE_API_KEY;
   });
 
-  it('missing key → inconclusive without calling fetch', async () => {
-    const saved = process.env.TYPE_SAFE_API_KEY;
+  it('missing key → inconclusive without calling fetch (both env names sanitized)', async () => {
+    const saved1 = process.env.TYPE_SAFE_API_KEY;
+    const saved2 = process.env.TYPESAFE_API_KEY;
     delete process.env.TYPE_SAFE_API_KEY;
+    delete process.env.TYPESAFE_API_KEY;
     const fetch = vi.fn();
     const jev = makeJev({ fetch });
     const v = await jev.verify('q', { x: 1 });
     expect(fetch).not.toHaveBeenCalled();
     expect(v).toEqual({ value: false, confidence: 0, inconclusive: true, raw: { reason: 'missing api key' } });
+    if (saved1 !== undefined) process.env.TYPE_SAFE_API_KEY = saved1;
+    if (saved2 !== undefined) process.env.TYPESAFE_API_KEY = saved2;
+  });
+
+  it('falls back to TYPESAFE_API_KEY env name', async () => {
+    const saved = process.env.TYPE_SAFE_API_KEY;
+    delete process.env.TYPE_SAFE_API_KEY;
+    process.env.TYPESAFE_API_KEY = 'longname-key';
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      model: 'jev-latest',
+      answers: { verdict: { type: 'noul', noul: 0.97 } },
+    }), { status: 200 }));
+    const jev = makeJev({ fetch });
+    const v = await jev.verify('q', {});
+    expect(v).toMatchObject({ value: true, inconclusive: false });
+    const [, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect((init.headers as Record<string, string>)['authorization']).toBe('Bearer longname-key');
     if (saved !== undefined) process.env.TYPE_SAFE_API_KEY = saved;
+    delete process.env.TYPESAFE_API_KEY;
   });
 
   it('confidence below threshold → inconclusive (raw value preserved)', async () => {

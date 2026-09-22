@@ -23,7 +23,7 @@ export interface Verdict<T = boolean> {
 }
 
 export interface JevOptions {
-  apiKey?: string;    // default: env TYPE_SAFE_API_KEY
+  apiKey?: string;    // default: env TYPE_SAFE_API_KEY, then TYPESAFE_API_KEY
   endpoint?: string;  // default: https://api.typesafe.ai/v1/systemone (documented)
   model?: string;     // default: 'jev-latest'
   threshold?: number; // default 0.8
@@ -72,7 +72,7 @@ export function makeJev(opts: JevOptions & { fetch?: FetchLike } = {}) {
     buildQuestion: () => Record<string, unknown>,
     parseAnswer: (answer: JevAnswer) => [T, number] | undefined,
   ): Promise<Verdict<T>> {
-    const apiKey = opts.apiKey ?? process.env.TYPE_SAFE_API_KEY;
+    const apiKey = opts.apiKey ?? process.env.TYPE_SAFE_API_KEY ?? process.env.TYPESAFE_API_KEY;
     if (!apiKey) return fail<T>({ reason: 'missing api key' });
 
     let raw: unknown;
