@@ -110,7 +110,12 @@ Expect a JSON with `"Browser":` — Chromium's CDP is alive in-guest. THEN the p
 
 - [ ] **Step 1: Failing tests** — (a) registry test: profile with `ports = ["9222:9222"]` resolves to `ports: ["9222:9222"]`; (b) backend test: boot with `ports: ["9222:9222"]` emits the verified port flag(s) from Task 1; boot with `ports: []` emits none; (c) builtin test: browser-test has image `pack:chromium-cdp`, exactly one port `9222:9222`, net false (sealed — staging via allow_hosts later), rw workspace mount.
 
-- [ ] **Step 2: Implement** — flow `ports` through ResolvedProfile → BootOptions → backend args. Use EXACTLY the mechanism verified in Task 1 (Smolfile-less create path: if create takes `--port HOST:GUEST`, use that; if ports only work via virtio-net backend, add `--net-backend virtio-net` whenever ports.length > 0 and record it).
+- [ ] **Step 2: Implement** — flow `ports` through ResolvedProfile → BootOptions → backend args. **SEALING MATRIX (Task 2-verified — backend-aware, do NOT use --no-net for port-publishing VMs):**
+  - `ports.length > 0` → create flags: `-p <mapping>` per port + `--net-backend virtio-net`; when `net=false` seal with **`--outbound-localhost-only`** (inbound publishing + localhost-only outbound + denial logging — Task 2 live-verified; `update --no-net` does NOT seal outbound on virtio-net).
+  - `ports.length === 0 && !net` → Phase 1 behavior: `machine update --no-net` between create and start (TSI, proven sealed in Phase 1 E2E).
+  - `net=true && allowHosts.length > 0` → `--allow-host` per host (implies virtio-net; unchanged).
+  - `net=true && allowHosts.length === 0` → bare `--net` (explicit full outbound; no builtin does this).
+  Unit tests pin the full 4-row matrix. Record the `--outbound-localhost-only` correction in `docs/smolvm-cli-reference.md` (corrects the Task 1 spike's row-5 claim).
 
 - [ ] **Step 3: profiles/browser-test.toml**
 
