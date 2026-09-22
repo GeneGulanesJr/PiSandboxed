@@ -770,6 +770,8 @@ curl -s --max-time 3 http://127.0.0.1:9222/   # → CDP-OK
 
 ### Verified facts
 
+> **⚠️ CORRECTION (Task 2 follow-up, backend-aware sealing):** the spike's earlier claim — "virtio-net + `--no-net` = sealed" (fact 3's "zero outbound") — is **WRONG for egress**. `machine update --no-net` only flips the record's net flag; on virtio-net **outbound stays OPEN** (the host-side virtio-net stack keeps forwarding). `--no-net` seals TSI boots only. A port-publishing VM (which requires `--net-backend virtio-net`) must be sealed at **CREATE time** with `--outbound-localhost-only`: host loopback stays reachable (what CDP needs), all other egress denied. NEVER seal a port VM with `update --no-net` — it seals nothing on virtio-net.
+
 1. **Default backend is tsi** (libkrun TSI): a machine record created without `--net-backend` carries no `network_backend` key; one created with `--net-backend virtio-net` stores `"network_backend":"virtio-net"` in `<data-dir>/vm.config.json`.
 2. **On tsi, inbound publishing requires network enabled.** `machine update --no-net` keeps the host-side bind (TCP connect succeeds) but the guest never answers → curl exit 52. Re-enabling with `machine update --net` restores forwarding on the same machine.
 3. **On virtio-net, inbound publishing works even with `--no-net`.** This is the no-egress-but-host-reachable combination needed for the QA browser VM (CDP inbound, zero outbound). **Tasks 2–4 should create the browser VM with `--net-backend virtio-net`.**

@@ -40,17 +40,26 @@ export class SmolvmBackend implements IsolationBackend {
     } else {
       args.push('--image', opts.image);
     }
-    // EGRESS MODEL (smolvm 1.17.0, verified): bare `--net` is allow-ALL — never
-    // emit it for sandboxed workloads. `--allow-host` (repeatable) implies net
-    // and gives deny-by-default allowlist. No net flags = fully sealed — BUT a
-    // pack manifest can bake network:true in (bake-time Smolfile needs net for
-    // the in-guest pull). Verified: create-time --allow-host TIGHTENS a net=true
-    // pack into allowlist, but a sealed boot must explicitly enforce
-    // `machine update --no-net` (verified: wget then fails with 'bad address').
+    // EGRESS + PORT MODEL (smolvm 1.17.0, verified — backend-aware sealing matrix):
+    // - bare `--net` is allow-ALL — only for an explicit full-outbound request.
+    // - `--allow-host` (repeatable) implies net and gives deny-by-default allowlist.
+    // - Port publishing needs `-p <mapping>` plus `--net-backend virtio-net` (tsi
+    //   cannot forward inbound with net disabled; virtio-net hosts the forward in
+    //   the host-side stack). CORRECTION (Task 2 spike): on virtio-net, `update
+    //   --no-net` does NOT seal outbound — egress stays open. A sealed port VM is
+    //   sealed at CREATE time with `--outbound-localhost-only` (host loopback stays
+    //   reachable for CDP; all other egress denied). NEVER `update --no-net` when
+    //   ports are present.
+    if (opts.ports.length > 0) {
+      for (const mapping of opts.ports) args.push('-p', mapping);
+      args.push('--net-backend', 'virtio-net');
+    }
     if (opts.allowHosts.length > 0) {
       for (const host of opts.allowHosts) args.push('--allow-host', host);
     } else if (opts.net) {
       args.push('--net'); // explicit full-outbound request — no builtin profile does this
+    } else if (opts.ports.length > 0) {
+      args.push('--outbound-localhost-only'); // the ONLY real egress seal on virtio-net
     }
     for (const m of opts.mounts) {
       args.push('--volume', `${m.host}:${m.guest}${m.readWrite ? '' : ':ro'}`);
@@ -60,8 +69,9 @@ export class SmolvmBackend implements IsolationBackend {
     args.push('--', '/bin/sh', '-c', 'exec sleep infinity');
 
     await this.#run(args, { timeoutMs: 30_000 });
-    if (!opts.net && opts.allowHosts.length === 0) {
-      // Sealed boot: override any net=true baked into a pack/checkpoint manifest.
+    if (!opts.net && opts.allowHosts.length === 0 && opts.ports.length === 0) {
+      // Sealed non-port boot: override any net=true baked into a pack/checkpoint
+      // manifest. (Port VMs must NEVER take this path — see matrix above.)
       await this.#run(['machine', 'update', '--name', opts.machineName, '--no-net'], { timeoutMs: 30_000 });
     }
     await this.#run(['machine', 'start', '--name', opts.machineName], { timeoutMs: 30_000 });

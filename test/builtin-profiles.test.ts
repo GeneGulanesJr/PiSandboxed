@@ -31,4 +31,12 @@ describe('builtin profiles (spec §5)', () => {
       expect(ws[0]!.host).toContain('{project}');
     }
   });
+
+  it('browser-test: chromium-cdp pack, exactly one CDP port, sealed net, rw workspace', async () => {
+    const p = await reg.get('browser-test');
+    expect(p).toMatchObject({ image: 'pack:chromium-cdp', net: false, sshAgent: false, ttlMs: 3_600_000 });
+    expect(p?.ports).toEqual(['9222:9222']);
+    expect(p?.allowHosts).toEqual([]);
+    expect(p?.mounts[0]?.readWrite).toBe(true);
+  });
 });

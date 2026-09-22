@@ -29,6 +29,8 @@ const ProfileTomlSchema = z.object({
   memory: z.number().int().min(256),
   ttl: z.string().regex(/^\d+[smh]$/),
   net: z.boolean().default(false),
+  // smolvm -p syntax: PORT[-END] or HOST[-END]:GUEST[-END]
+  ports: z.array(z.string().regex(/^\d+(-\d+)?(:\d+(-\d+)?)?$/)).default([]),
   network: NetworkSchema.default({ allow_hosts: [] }),
   mounts: z.array(MountSchema).default([]),
   secrets: SecretsSchema.default({ ssh_agent: false }),
@@ -63,6 +65,7 @@ function toResolved(name: string, raw: ProfileToml): ResolvedProfile {
     ttlMs: ttlToMs(raw.ttl),
     net: raw.net,
     allowHosts: raw.network.allow_hosts,
+    ports: raw.ports,
     mounts,
     sshAgent: raw.secrets.ssh_agent,
   };

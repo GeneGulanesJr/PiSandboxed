@@ -62,6 +62,12 @@ describe('ProfileRegistry', () => {
     const reg = setup({});
     await expect(reg.get('nope')).resolves.toBeUndefined();
   });
+
+  it('round-trips ports', async () => {
+    const withPorts = VALID.replace('net = false', 'net = false\nports = ["9222:9222"]');
+    const reg = setup({ dev: withPorts });
+    await expect(reg.get('dev')).resolves.toMatchObject({ ports: ['9222:9222'] });
+  });
 });
 
 function mkdtemp(): string {

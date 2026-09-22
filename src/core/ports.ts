@@ -19,6 +19,8 @@ export interface ResolvedProfile {
   ttlMs: number;
   net: boolean;
   allowHosts: string[];
+  /** host↔guest port forwards, smolvm `-p` syntax (e.g. "9222:9222"); [] = none */
+  ports: string[];
   mounts: MountSpec[];
   sshAgent: boolean;
 }
@@ -61,6 +63,8 @@ export interface BootOptions {
   memoryMb: number;
   net: boolean;
   allowHosts: string[];
+  /** smolvm `-p` mappings (e.g. "9222:9222"); forces virtio-net + backend-aware sealing */
+  ports: string[];
   mounts: MountSpec[];
   sshAgent: boolean;
 }

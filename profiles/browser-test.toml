@@ -1,0 +1,17 @@
+image = "pack:chromium-cdp"
+cpus = 4
+memory = 8192
+ttl = "1h"
+net = false
+ports = ["9222:9222"]
+
+[network]
+allow_hosts = []
+
+[[mounts]]
+host = "/home/genegulanesjr/Documents/{project}"
+guest = "/workspace"
+mode = "rw"
+
+[secrets]
+ssh_agent = false

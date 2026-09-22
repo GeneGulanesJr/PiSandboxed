@@ -35,6 +35,7 @@ export class EphemeralMode implements ModeManager {
       memoryMb: profile.memoryMb,
       net: profile.net,
       allowHosts: profile.allowHosts,
+      ports: profile.ports,
       mounts: profile.mounts,
       sshAgent: profile.sshAgent,
     });
