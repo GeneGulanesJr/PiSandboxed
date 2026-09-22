@@ -149,7 +149,9 @@ sufficient for single-host operation).
 ## 9. API v1
 
 ```
-POST   /sandboxes              {profile, mode?, ttl?, mounts?, count?}
+POST   /sandboxes              {profile, mode?, ttl?, project?, count?}
+                               # `project` fills the profile's {project} mount
+                               # placeholder; requests CANNOT add mounts
 POST   /sandboxes/:id/exec     {cmd, env?}         → streamed output
 GET    /sandboxes/:id          status + resource stats
 POST   /sandboxes/:id/promote  {artifacts | diff}  → policy-checked extraction
@@ -179,7 +181,7 @@ PiSandboxed/
 │   ├── server/       # sandboxd bootstrap, routes, auth
 │   ├── policy/       # profile parser, validator, request gate
 │   ├── smolvm/       # CLI adapter: spawn, parse, lifecycle, errors
-│   ├── modes/        # ephemeral.js, pool.js, persistent.js managers
+│   ├── modes/        # ephemeral.ts, pool.ts, persistent.ts managers
 │   ├── store/        # sqlite schema + repositories
 │   └── cli/          # `sand` — thin API client
 ├── profiles/         # built-in, immutable (untrusted, dev, build, browser-test)
