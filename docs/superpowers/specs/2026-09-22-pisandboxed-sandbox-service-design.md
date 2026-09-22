@@ -145,34 +145,51 @@ ssh_agent = false
 4. Every promotion is audit-logged. No promote → no host state mutation beyond
    what the mount itself touched.
 
-## 7. Browser testing (visual QA)
+## 7. Browser testing (visual QA — browser-harness + Jev)
 
-**Topology — vision loop on host, browser in VM:**
+**Topology — browser in the cage, brains on the host, one CDP wire:**
 
 ```
-main agent ──dispatch──> qa-visual subagent (pi + vision model)  ← stays on HOST
-                              │  HTTP
-                              ▼
-                         sandboxd ──> browser-test sandbox (VM):
-                                       ├── dev server (site under test)
-                                       ├── headless Chromium + Playwright
-                                       └── screenshots → /workspace/artifacts/
-                              ▲
-        subagent reads screenshots via the host-side mount, looks at them
-        with the vision model, exec's the next Playwright command — loop.
+main agent ──dispatch──> qa-visual subagent (pi instance — HOST process)
+                           │
+                           ├── browser-harness (Python, host-side, uv-managed)
+                           │     └── CDP  ws://localhost:9222
+                           ├── Jev judgments (TypeSafe JS SDK, host-side)
+                           │     └── natural language + page state → {value, confidence}
+                           └── LLM API keys — HOST ONLY, never in the sandbox
+                                       │  (only this wire crosses the boundary)
+                                       ▼
+     ┌──────────── sandbox: `browser-test` profile ────────────┐
+     │  Chromium --remote-debugging-port=9222 (software GL)    │
+     │  site under test (dev server, localhost-in-VM)          │
+     │  /workspace rw mount — site code + artifacts/           │
+     └──────────────────────────────────────────────────────────┘
 ```
 
-- Site + browser run in the **same VM** → localhost traffic, zero egress needed
-  for local testing. For staging URLs, the profile's `allow_hosts` names the
-  staging host (never `*`).
-- `browser-test` profile: rw workspace mount, no SSH agent, net allowlist
-  localhost-only by default.
-- Screenshots are **outputs** (readable via mount) — promote stays reserved for
-  **mutating** host state.
-- **Rendering:** software-rendering Chromium for launch. GPU (virtio-gpu/Venus)
-  requires host `virglrenderer` + Vulkan driver — deferred to Phase 3, only if
-  WebGL/visual-fidelity testing is needed.
-- Baked image: `chromium-playwright` (Node 26 + Playwright + Chromium + fonts).
+- **browser-harness** (browser-use, Python) is the interaction layer: connects to the
+  in-VM browser over one CDP websocket and self-heals — the agent writes its own
+  missing helpers into a per-task workspace (kept under the consumer's project dir,
+  NEVER shared, NEVER inside the sandbox).
+- **Jev (TypeSafe System One)** is the judgment layer: typed verdicts with
+  confidence for assertions/routing/extraction. Threshold policy: **below 0.8 →
+  inconclusive, never silently pass**; escalation = re-ask with screenshot attached.
+- **Screenshots stay first-class evidence**: PNG per navigation/major action into
+  `/workspace/artifacts/` via CDP — human evidence + Jev visual grounding. The
+  vision model is an occasional tool, not the loop's engine (the loop is
+  DOM/harness-driven).
+- `browser-test` profile: `chromium-cdp` image, publishes exactly one port
+  (9222 → 9222, host-local), sealed net by default (staging URLs via `allow_hosts`),
+  rw workspace mount, no SSH agent. CDP exposure is host-local — anything on the
+  host can drive that browser; acceptable single-user, documented.
+- `chromium-cdp` image: node26-dev base + Chromium + fonts + a wrapper that starts
+  headless Chromium with CDP on 9222 (`--no-sandbox` — the VM is the sandbox;
+  `--disable-gpu` software rendering; `--disable-dev-shm-usage`). No Playwright,
+  no Python in-guest — the image stays lean.
+- **Verify-first points** (Phase 1 lesson): smolvm inbound port publishing
+  (fallback: `--net-backend virtio-net`) and browser-harness's real invocation
+  shape — both get a research spike before adapter code is written.
+- **Rendering:** software rendering for launch. GPU (virtio-gpu/Venus) stays a
+  Phase 3 option for WebGL/visual-fidelity testing.
 
 ## 8. Baked images (Smolfiles)
 
@@ -180,7 +197,11 @@ Images are declared as smolvm Smolfiles in `images/`, built and packed with
 `smolvm pack create`, versioned like code:
 
 - `node26-dev` (Phase 1) — Node 26, pnpm, git, build essentials; deps pre-warmed
-- `chromium-playwright` (Phase 2) — node26-dev + Playwright + Chromium + fonts
+- `chromium-cdp` (Phase 2) — node26-dev + Chromium + fonts + CDP launch wrapper
+  (Chromium boots with `--remote-debugging-port=9222`); no Playwright/Python
+  in-guest — browser-harness runs host-side (spec §7)
+- `alpine3` (Phase 1, operational) — minimal netless base for the `untrusted`
+  profile (smolvm refuses netless registry pulls by design)
 
 Registry: ghcr.io/gulaneskorp (push optional; local `.smolmachine` packs are
 sufficient for single-host operation).
@@ -246,8 +267,10 @@ PiSandboxed/
   `untrusted`/`dev`/`build`; baked `node26-dev` image; dependency-cruiser rule
   active from the first commit; one end-to-end integration test simulating a
   PiSubagent task.
-- **Phase 2:** `browser-test` profile + `chromium-playwright` image + visual QA
-  flow.
+- **Phase 2:** visual QA via browser-harness + Jev (spec §7): `chromium-cdp`
+  image + `browser-test` profile (CDP port 9222) + `qa/` module
+  (harness.ts / jev.ts / report.ts) + example qa-visual agent + gated E2E.
+  Verify-first spikes: smolvm port publishing, browser-harness invocation.
 - **Phase 3:** `pooled` mode (branch fan-out + warm-pool manager); `persistent`
   mode + TTL reaper; GPU/WebGL profile; python/headless-browser image variants;
   metrics.
