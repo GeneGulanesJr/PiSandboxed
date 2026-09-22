@@ -1,0 +1,10 @@
+image = "node:26-alpine"
+cpus = 4
+memory = 4096
+net = true
+
+init = [
+  "apk add --no-cache git python3 make g++ curl bash",
+  "npm install -g pnpm@latest",
+  "pnpm config set store-dir /workspace/.pnpm-store",
+]
