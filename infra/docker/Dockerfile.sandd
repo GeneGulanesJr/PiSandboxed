@@ -1,0 +1,48 @@
+# Spec §9: PiSandboxed sandbox daemon (sandd). TypeScript/fastify — NOT Rust.
+# Rewritten 2026-09-24 against the real sibling checkout after the fictional
+# `cargo build` Dockerfile failed: package.json is type=module, engines
+# node>=26, bin/sandd.mjs → dist/server/main.js (tsc build), better-sqlite3
+# needs a native build (python3/make/g++).
+#
+# Known constraints (see infra/README.md):
+# - sandd binds 127.0.0.1 hardcoded (src/server/main.ts) → compose runs it
+#   with network_mode: host until upstream adds SANDD_HOST.
+# - the auth token self-mints at ~/.pisandboxed/token if absent; the
+#   pre-seeded /token volume is not read yet (kept for future wiring).
+# - smolvm binary is NOT packaged here. SMOLVM_BIN points at a path that
+#   does not exist in this image; boot is unaffected (lazy spawn), sandbox
+#   exec is deferred until the smolvm artifact ships.
+
+FROM node:26-slim AS build
+WORKDIR /repo
+# better-sqlite3 → node-gyp → python3/make/g++. npm (not pnpm): upstream has
+# no lockfile and npm runs native install scripts without pnpm 10's
+# build-script approval gate.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 make g++ \
+    && rm -rf /var/lib/apt/lists/*
+COPY package.json tsconfig.json ./
+RUN npm install --include=dev
+COPY src ./src
+COPY bin ./bin
+RUN npm run build
+
+FROM node:26-slim AS runtime
+ENV NODE_ENV=production \
+    SANDD_PORT=7391 \
+    SMOLVM_BIN=/usr/local/bin/smolvm
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 1001 nodejs \
+    && useradd --uid 1001 --gid nodejs --create-home sandd
+WORKDIR /repo
+COPY --from=build --chown=sandd:sandd /repo/node_modules ./node_modules
+COPY --from=build --chown=sandd:sandd /repo/dist ./dist
+COPY --from=build --chown=sandd:sandd /repo/package.json ./package.json
+RUN mkdir -p /images /token \
+    && chmod 0700 /token
+USER sandd
+VOLUME ["/images", "/token"]
+EXPOSE 7391
+CMD ["node", "dist/server/main.js"]
