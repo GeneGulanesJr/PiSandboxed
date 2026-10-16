@@ -119,13 +119,13 @@ for the captured smolvm 1.17.0 semantics (pack booting, egress model, RO mounts)
 ## Visual QA (Phase 2)
 
 Hardware-isolated browser testing: real Chromium runs **inside the VM**; the
-browser-harness, the Jev judgment calls, and the report stay **host-side** —
-LLM/API keys never enter the sandbox.
+browser-harness, the decision judgment calls (Liquid AI Decisions API), and the
+report stay **host-side** — LLM/API keys never enter the sandbox.
 
 ```text
- subagent (host) — agents/qa-visual.md            TYPE_SAFE_API_KEY lives here
+ subagent (host) — agents/qa-visual.md            LIQUID_API_KEY lives here
    │ sand create/exec/rm        └─ browser-harness (stdin python tasks)
-   │                               qa/harness.ts · qa/jev.ts · qa/report.ts
+   │                               qa/harness.ts · qa/decision.ts · qa/report.ts
    │                                      │ BU_CDP_URL=http://127.0.0.1:9222
    ▼                                      ▼ (CDP wire, published port)
  ┌─ smolvm microVM — pack:chromium-cdp ────────────────┐
@@ -138,7 +138,7 @@ Host prereqs: `uv`, then the QA venv (see `docs/browser-harness-notes.md`):
 
 ```sh
 uv venv .venv-qa && uv pip install --python .venv-qa/bin/python -r qa/requirements.txt
-# TYPE_SAFE_API_KEY optional — unset ⇒ Jev verdicts are INCONCLUSIVE, never errors
+# LIQUID_API_KEY optional — unset ⇒ decision verdicts are INCONCLUSIVE, never errors
 ```
 
 Quickstart (full loop + hard rules: `agents/qa-visual.md`):
@@ -155,7 +155,7 @@ node bin/sand.mjs exec $ID -- sh -c 'printf "%s\n" \
 node bin/sand.mjs exec $ID -- sh -c 'nohup /opt/cdp/start-chromium.sh >/tmp/chrome.log 2>&1 & sleep 4; \
   wget -q -O - http://127.0.0.1:9222/json/version'
 npx tsx qa-run.ts        # runHarnessTask({cdpUrl: 'http://127.0.0.1:9222', ...})
-                         # → jev.verify(...) per checkpoint → writeReport(artifacts)
+                         # → decision.verify(...) per checkpoint → writeReport(artifacts)
 node bin/sand.mjs rm $ID && smolvm machine list   # ALWAYS — even on failure
 ```
 
@@ -164,13 +164,13 @@ node bin/sand.mjs rm $ID && smolvm machine list   # ALWAYS — even on failure
 
 ```ts
 import { runHarnessTask } from './qa/harness.js';
-import { makeJev } from './qa/jev.js';
+import { makeDecision } from './qa/decision.js';
 import { writeReport } from './qa/report.js';
-const jev = makeJev();
+const decision = makeDecision();
 const h = await runHarnessTask({ cdpUrl: 'http://127.0.0.1:9222',
   task: 'new_tab("http://127.0.0.1:8080/")\nwait_for_load()\nprint(page_info())',
   workspaceDir: `${process.env.PROJ}/qa-workspace` });
-const verdict = await jev.verify('Does the page state show the demo app loaded?',
+const verdict = await decision.verify('Does the page state show the demo app loaded?',
   { transcript: h.transcript });
 writeReport({ sandboxId: process.env.ID!, url: 'http://127.0.0.1:8080/',
   startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(),

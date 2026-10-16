@@ -5,14 +5,14 @@
  *   - E2E gate (Task 7): parses report.json to pass/fail the promotion flow.
  *   - qa-visual agent (Task 8): reads report.md for the human-readable trail.
  *
- * Verdict semantics come from qa/jev.ts: `inconclusive` beats `value` when
+ * Verdict semantics come from qa/decision.ts: `inconclusive` beats `value` when
  * classifying, so low-confidence judgments stay visible instead of masquerading
  * as hard failures (or worse, silent passes).
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Verdict } from './jev.js';
+import type { Verdict } from './decision.js';
 
 export interface CheckResult {
   name: string;

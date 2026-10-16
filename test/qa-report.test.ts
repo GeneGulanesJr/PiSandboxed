@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { writeReport } from '../qa/report.js';
-import type { Verdict } from '../qa/jev.js';
+import type { Verdict } from '../qa/decision.js';
 
 let dir: string;
 afterEach(() => { if (dir) rmSync(dir, { recursive: true, force: true }); });
